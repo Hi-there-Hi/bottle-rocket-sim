@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bottle Rocket Simulator</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="data.js"></script>
+<script>
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, radii) {
+    const r = Array.isArray(radii) ? radii : [radii || 0];
+    const tl = Math.min(r[0] || 0, Math.min(w, h) / 2);
+    this.moveTo(x + tl, y);
+    this.lineTo(x + w - tl, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + tl);
+    this.lineTo(x + w, y + h - tl);
+    this.quadraticCurveTo(x + w, y + h, x + w - tl, y + h);
+    this.lineTo(x + tl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - tl);
+    this.lineTo(x, y + tl);
+    this.quadraticCurveTo(x, y, x + tl, y);
+    this.closePath();
+  };
+}
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof ROCKET_DATA === 'undefined') {
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;color:#ff6b6b;">' +
+      '<h2>Data not found</h2><p>Run <code>python3 rocket_sim.py</code> first to generate simulation data.</p></div>';
+  }
+});
+</script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f0f23; color: #e0e0e0; min-height: 100vh; }
+header { background: linear-gradient(135deg, #1a1a3e, #2a1a4e); padding: 24px 32px; text-align: center; border-bottom: 2px solid #533483; }
+header h1 { font-size: 28px; color: #fff; letter-spacing: 1px; }
+header p { color: #a0a0c0; margin-top: 4px; font-size: 14px; }
+.tabs { display: flex; gap: 0; background: #1a1a3e; border-bottom: 2px solid #533483; }
+.tab-btn { flex: 1; padding: 14px; border: none; background: transparent; color: #8888aa; font-size: 15px; cursor: pointer; transition: all 0.2s; font-weight: 600; }
+.tab-btn:hover { background: #222244; color: #ccccee; }
+.tab-btn.active { background: #2a1a4e; color: #ffd93d; box-shadow: inset 0 -3px 0 #ffd93d; }
+.tab-content { display: none; padding: 24px; max-width: 1400px; margin: 0 auto; }
+.tab-content.active { display: block; }
+
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+.chart-card { background: #1a1a3e; border-radius: 12px; padding: 16px; border: 1px solid #2a2a4e; }
+.chart-card h3 { color: #ccccee; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+.chart-card canvas { max-height: 280px; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+.summary-card { background: #1a1a3e; border-radius: 10px; padding: 16px; border: 1px solid #2a2a4e; text-align: center; }
+.summary-card .ratio { font-size: 18px; font-weight: bold; }
+.summary-card .volume { font-size: 12px; color: #8888aa; margin-bottom: 8px; }
+.summary-card .stat { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; border-bottom: 1px solid #222244; }
+.summary-card .stat:last-child { border-bottom: none; }
+.summary-card .stat .val { font-weight: 600; color: #ffd93d; }
+
+.interactive-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 20px; }
+.controls-panel { background: #1a1a3e; border-radius: 12px; padding: 20px; border: 1px solid #2a2a4e; }
+.controls-panel h3 { color: #ccccee; margin-bottom: 16px; }
+.control-group { margin-bottom: 16px; }
+.control-group label { display: block; font-size: 13px; color: #8888aa; margin-bottom: 4px; }
+.control-group input[type="range"] { width: 100%; accent-color: #533483; }
+.control-group .value { float: right; color: #ffd93d; font-weight: 600; font-size: 14px; }
+.control-group select { width: 100%; padding: 8px; background: #0f0f23; color: #e0e0e0; border: 1px solid #533483; border-radius: 6px; font-size: 14px; }
+.btn { padding: 10px 24px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.btn-primary { background: #533483; color: white; }
+.btn-primary:hover { background: #6b44a0; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-success { background: #2d8a4e; color: white; }
+.btn-success:hover { background: #3aad63; transform: translateY(-1px); }
+.controls-row { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+
+.animation-panel { background: #1a1a3e; border-radius: 12px; padding: 20px; border: 1px solid #2a2a4e; position: relative; min-height: 500px; }
+.animation-panel h3 { text-align: center; margin-bottom: 12px; }
+#rocketCanvas { width: 100%; height: 420px; border-radius: 8px; background: linear-gradient(180deg, #0a0a1a 0%, #1a1a3e 100%); display: block; }
+
+.telemetry { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+.telemetry-item { background: #0f0f23; border-radius: 8px; padding: 12px; text-align: center; border: 1px solid #2a2a4e; }
+.telemetry-item .label { font-size: 11px; text-transform: uppercase; color: #8888aa; letter-spacing: 1px; }
+.telemetry-item .value { font-size: 22px; font-weight: bold; color: #ffd93d; margin-top: 4px; }
+.telemetry-item .value.pressure { color: #ff6b6b; }
+.telemetry-item .value.altitude { color: #4d96ff; }
+.telemetry-item .value.speed { color: #6bcb77; }
+.telemetry-item .unit { font-size: 11px; color: #8888aa; }
+
+.mini-chart { margin-top: 16px; }
+.mini-chart canvas { max-height: 120px; }
+
+@media (max-width: 900px) {
+  .chart-grid { grid-template-columns: 1fr; }
+  .interactive-layout { grid-template-columns: 1fr; }
+  .summary-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Bottle Rocket Simulator</h1>
+  <p>Physics-based comparison of water-to-air ratios for a 1.5 L soda bottle at 5 bar</p>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('comparison')">Comparison — All Ratios</button>
+  <button class="tab-btn" onclick="switchTab('interactive')">Interactive Launch</button>
+</div>
+
+<div id="tab-comparison" class="tab-content active">
+  <div class="summary-grid" id="summaryCards"></div>
+  <div class="chart-grid">
+    <div class="chart-card"><h3>Altitude vs Time</h3><canvas id="chartHeight"></canvas></div>
+    <div class="chart-card"><h3>Velocity vs Time</h3><canvas id="chartVelocity"></canvas></div>
+    <div class="chart-card"><h3>Acceleration vs Time</h3><canvas id="chartAccel"></canvas></div>
+    <div class="chart-card"><h3>Thrust vs Time</h3><canvas id="chartThrust"></canvas></div>
+  </div>
+</div>
+
+<div id="tab-interactive" class="tab-content">
+  <div class="interactive-layout">
+    <div class="controls-panel">
+      <h3>Launch Controls</h3>
+      <div class="control-group">
+        <label>Water Ratio <span class="value" id="ratioValue">1/4</span></label>
+        <select id="ratioSelect">
+          <option value="1/16">1/16 (94 mL)</option>
+          <option value="1/8">1/8 (188 mL)</option>
+          <option value="1/4" selected>1/4 (375 mL)</option>
+          <option value="1/2">1/2 (750 mL)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Initial Pressure: <span class="value" id="pressureValue">5.0 bar</span></label>
+        <input type="range" id="pressureSlider" min="2" max="8" step="0.5" value="5">
+      </div>
+      <div class="control-group">
+        <label>Simulation Speed: <span class="value" id="speedValue">1.0x</span></label>
+        <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1">
+      </div>
+      <div class="controls-row">
+        <button class="btn btn-primary" id="launchBtn" onclick="launchInteractive()">Launch</button>
+        <button class="btn btn-success" id="resetBtn" onclick="resetInteractive()" disabled>Reset</button>
+        <span id="statusText" style="font-size:13px;color:#8888aa;margin-left:8px;">Ready</span>
+      </div>
+      <div class="mini-chart">
+        <canvas id="miniTrajectory"></canvas>
+      </div>
+    </div>
+    <div class="animation-panel">
+      <h3>Rocket Launch Animation</h3>
+      <canvas id="rocketCanvas"></canvas>
+      <div class="telemetry">
+        <div class="telemetry-item"><div class="label">Altitude</div><div class="value altitude" id="teleAlt">0.0</div><div class="unit">meters</div></div>
+        <div class="telemetry-item"><div class="label">Speed</div><div class="value speed" id="teleSpeed">0.0</div><div class="unit">m/s</div></div>
+        <div class="telemetry-item"><div class="label">Set Pressure</div><div class="value" style="color:#8888aa" id="teleSetPressure">—</div><div class="unit">bar (gauge)</div></div>
+        <div class="telemetry-item"><div class="label">Chamber Pressure</div><div class="value pressure" id="telePressure">0.0</div><div class="unit">bar (gauge)</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff'];
+const RATIOS = ['1/16', '1/8', '1/4', '1/2'];
+
+// ========= SUMMARY CARDS =========
+function buildSummaryCards() {
+  const container = document.getElementById('summaryCards');
+  container.innerHTML = '';
+  RATIOS.forEach((ratio, i) => {
+    const d = ROCKET_DATA[ratio];
+    if (!d) return;
+    const maxH = Math.max(...d.x);
+    const maxV = Math.max(...d.v);
+    const maxA = Math.max(...d.a);
+    const maxF = Math.max(...d.F);
+    const vol = ratio === '1/16' ? 94 : ratio === '1/8' ? 188 : ratio === '1/4' ? 375 : 750;
+    const card = document.createElement('div');
+    card.className = 'summary-card';
+    card.style.borderTop = `3px solid ${COLORS[i]}`;
+    card.innerHTML = `
+      <div class="ratio" style="color:${COLORS[i]}">${ratio}</div>
+      <div class="volume">${vol} mL water</div>
+      <div class="stat"><span>Max Altitude</span><span class="val">${maxH.toFixed(1)} m</span></div>
+      <div class="stat"><span>Max Speed</span><span class="val">${maxV.toFixed(1)} m/s</span></div>
+      <div class="stat"><span>Max Accel</span><span class="val">${(maxA/9.81).toFixed(0)} g</span></div>
+      <div class="stat"><span>Max Thrust</span><span class="val">${maxF.toFixed(1)} N</span></div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ========= COMPARISON CHARTS =========
+let charts = {};
+
+function makeComparisonChart(id, datasets, yLabel) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  return new Chart(el.getContext('2d'), {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { labels: { color: '#ccccee', font: { size: 11 } } } },
+      scales: {
+        x: { type: 'linear', title: { display: true, text: 'Time (s)', color: '#8888aa' }, ticks: { color: '#8888aa' }, grid: { color: '#222244' } },
+        y: { title: { display: true, text: yLabel, color: '#8888aa' }, ticks: { color: '#8888aa' }, grid: { color: '#222244' } },
+      }
+    }
+  });
+}
+
+function buildComparisonCharts() {
+  Object.values(charts).forEach(c => { if (c) c.destroy(); });
+  charts = {};
+
+  const fields = ['x', 'v', 'a', 'F'];
+  const labels = ['Height (m)', 'Velocity (m/s)', 'Accel (m/s\u00b2)', 'Thrust (N)'];
+  const ids = ['chartHeight', 'chartVelocity', 'chartAccel', 'chartThrust'];
+
+  fields.forEach((key, fi) => {
+    const datasets = RATIOS.map((r, i) => {
+      const t = ROCKET_DATA[r].t;
+      const v = ROCKET_DATA[r][key];
+      const data = [];
+      for (let j = 0; j < t.length; j++) {
+        data.push({ x: t[j], y: v[j] });
+      }
+      return {
+        label: r,
+        data: data,
+        borderColor: COLORS[i],
+        backgroundColor: COLORS[i] + '22',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+      };
+    });
+    charts[key] = makeComparisonChart(ids[fi], datasets, labels[fi]);
+  });
+}
+
+// ========= TAB SWITCHING =========
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector(`.tab-btn[onclick*="${name}"]`).classList.add('active');
+  if (name === 'interactive') {
+    resizeCanvas();
+    drawRocketFrame(0, 0, 1, false);
+    updateTrajectoryPreview();
+    document.getElementById('teleSetPressure').textContent = document.getElementById('pressureValue').textContent;
+  }
+}
+
+// ========= INTERACTIVE LAUNCH =========
+const rocketCanvas = document.getElementById('rocketCanvas');
+const rocketCtx = rocketCanvas.getContext('2d');
+
+let isLaunching = false;
+let launchAnimId = null;
+let launchData = null;
+
+function findFirstIndex(arr, pred) {
+  for (let i = 0; i < arr.length; i++) {
+    if (pred(arr[i])) return i;
+  }
+  return -1;
+}
+
+function resizeCanvas() {
+  let w, h;
+  const rect = rocketCanvas.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) {
+    w = rect.width;
+    h = rect.height;
+  } else {
+    w = rocketCanvas.parentElement.clientWidth || 600;
+    h = 420;
+  }
+  const dpr = window.devicePixelRatio || 1;
+  rocketCanvas.width = w * dpr;
+  rocketCanvas.height = h * dpr;
+}
+
+function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust) {
+  if (rocketCanvas.width === 0 || rocketCanvas.height === 0) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = rocketCanvas.width / dpr;
+  const H = rocketCanvas.height / dpr;
+  rocketCtx.save();
+
+  rocketCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const grad = rocketCtx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0a2a');
+  grad.addColorStop(0.6, '#1a1a3e');
+  grad.addColorStop(1, '#2a2a4e');
+  rocketCtx.fillStyle = grad;
+  rocketCtx.fillRect(0, 0, W, H);
+
+  // Stars
+  rocketCtx.fillStyle = 'white';
+  for (let i = 0; i < 50; i++) {
+    const sx = ((i * 137.5 + 42) % 100) / 100 * W;
+    const sy = ((i * 97.3 + 42) % 100) / 100 * H * 0.6;
+    const sr = 0.5 + ((i * 53.7) % 3);
+    rocketCtx.globalAlpha = 0.3 + ((i * 31.7) % 7) / 10;
+    rocketCtx.beginPath();
+    rocketCtx.arc(sx, sy, sr, 0, Math.PI * 2);
+    rocketCtx.fill();
+  }
+  rocketCtx.globalAlpha = 1;
+
+  // Ground
+  rocketCtx.fillStyle = '#1a2a1a';
+  rocketCtx.fillRect(0, H - 40, W, 40);
+  rocketCtx.strokeStyle = '#2a4a2a';
+  rocketCtx.lineWidth = 2;
+  rocketCtx.beginPath();
+  rocketCtx.moveTo(0, H - 40);
+  rocketCtx.lineTo(W, H - 40);
+  rocketCtx.stroke();
+
+  const bW = 36;
+  const bH = 80;
+
+  const groundY = H - 40 - bH / 2;
+  const skyY = H * 0.08;
+  const normH = maxHeight > 0 ? Math.min(Math.max(currentHeight / maxHeight, 0), 1) : 0;
+  const rocketY = groundY - (groundY - skyY) * normH;
+  const rocketX = W / 2;
+
+  rocketCtx.save();
+  rocketCtx.translate(rocketX, rocketY);
+
+  const bodyGrad = rocketCtx.createLinearGradient(-bW/2, 0, bW/2, 0);
+  bodyGrad.addColorStop(0, '#88ccff');
+  bodyGrad.addColorStop(0.3, '#cce8ff');
+  bodyGrad.addColorStop(0.7, '#cce8ff');
+  bodyGrad.addColorStop(1, '#88ccff');
+  rocketCtx.fillStyle = bodyGrad;
+  rocketCtx.strokeStyle = '#4488bb';
+  rocketCtx.lineWidth = 1.5;
+
+  rocketCtx.beginPath();
+  rocketCtx.roundRect(-bW/2, -bH/2, bW, bH, 6);
+  rocketCtx.fill();
+  rocketCtx.stroke();
+
+  if (waterFrac > 0) {
+    const waterH = waterFrac * bH * 0.7;
+    rocketCtx.fillStyle = 'rgba(50, 150, 255, 0.5)';
+    rocketCtx.beginPath();
+    rocketCtx.roundRect(-bW/2 + 4, bH/2 - 4 - waterH, bW - 8, waterH, 3);
+    rocketCtx.fill();
+
+    rocketCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    rocketCtx.beginPath();
+    rocketCtx.arc(-5, bH/2 - 10 - waterH/2, 3, 0, Math.PI * 2);
+    rocketCtx.fill();
+  }
+
+  rocketCtx.fillStyle = '#666';
+  rocketCtx.strokeStyle = '#444';
+  rocketCtx.lineWidth = 1;
+  rocketCtx.beginPath();
+  rocketCtx.roundRect(-10, bH/2, 20, 12, [0, 0, 3, 3]);
+  rocketCtx.fill();
+  rocketCtx.stroke();
+
+  if (hasThrust) {
+    const flameLen = 15 + 25 * waterFrac;
+    const flameGrad = rocketCtx.createLinearGradient(0, bH/2 + 12, 0, bH/2 + 12 + flameLen);
+    flameGrad.addColorStop(0, 'rgba(255, 200, 50, 0.9)');
+    flameGrad.addColorStop(0.5, 'rgba(255, 100, 0, 0.6)');
+    flameGrad.addColorStop(1, 'rgba(255, 50, 0, 0)');
+    rocketCtx.fillStyle = flameGrad;
+    rocketCtx.beginPath();
+    rocketCtx.moveTo(-8, bH/2 + 12);
+    rocketCtx.quadraticCurveTo(-12, bH/2 + 12 + flameLen * 0.6, 0, bH/2 + 12 + flameLen);
+    rocketCtx.quadraticCurveTo(12, bH/2 + 12 + flameLen * 0.6, 8, bH/2 + 12);
+    rocketCtx.closePath();
+    rocketCtx.fill();
+  }
+
+  rocketCtx.restore();
+
+  // Overlays
+  rocketCtx.fillStyle = '#8888aa';
+  rocketCtx.font = '12px monospace';
+  const ratioText = document.getElementById('ratioSelect')?.value || '1/4';
+  const pressText = document.getElementById('pressureValue')?.textContent || '5.0 bar';
+  const altText = document.getElementById('teleAlt').textContent;
+  const spdText = document.getElementById('teleSpeed').textContent;
+  const prsText = document.getElementById('telePressure').textContent;
+  rocketCtx.fillText(`${ratioText} | ${pressText}`, 12, 20);
+  rocketCtx.fillStyle = '#4d96ff';
+  rocketCtx.fillText(`Alt: ${altText} m`, 12, 36);
+  const spd = parseFloat(spdText);
+  if (Math.abs(spd) > 0.3) {
+    rocketCtx.fillStyle = spd > 0 ? '#6bcb77' : '#ff6b6b';
+    rocketCtx.font = 'bold 13px monospace';
+    rocketCtx.fillText(`${spd > 0 ? '\u2191' : '\u2193'} ${Math.abs(spd).toFixed(1)} m/s`, 12, 54);
+  }
+  rocketCtx.fillStyle = '#ff6b6b';
+  rocketCtx.font = '11px monospace';
+  rocketCtx.fillText(`Chamber: ${prsText} bar`, 12, 70);
+
+  // Landing flag
+  const st = document.getElementById('statusText').textContent;
+  if (st === 'Landed!') {
+    rocketCtx.fillStyle = '#ffd93d';
+    rocketCtx.font = 'bold 16px monospace';
+    rocketCtx.textAlign = 'center';
+    rocketCtx.fillText('LANDED', W / 2, 40);
+    rocketCtx.textAlign = 'start';
+  }
+
+  rocketCtx.restore();
+}
+
+// Mini trajectory chart
+let miniChart = null;
+
+function updateTrajectoryPreview() {
+  const el = document.getElementById('miniTrajectory');
+  if (!el) return;
+  const ratio = document.getElementById('ratioSelect').value;
+  const d = ROCKET_DATA[ratio];
+  if (!d) return;
+  if (miniChart) miniChart.destroy();
+  const xyData = [];
+  for (let j = 0; j < d.t.length; j++) {
+    xyData.push({ x: d.t[j], y: d.x[j] });
+  }
+  miniChart = new Chart(el.getContext('2d'), {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Altitude',
+        data: xyData,
+        borderColor: '#4d96ff',
+        backgroundColor: '#4d96ff22',
+        fill: true,
+        pointRadius: 0,
+        tension: 0.3,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { type: 'linear', display: false },
+        y: { ticks: { color: '#8888aa', font: { size: 10 } }, grid: { color: '#222244' } }
+      }
+    }
+  });
+}
+
+// ========= LAUNCH SIMULATION =========
+function launchInteractive() {
+  if (isLaunching) return;
+  isLaunching = true;
+
+  document.getElementById('launchBtn').disabled = true;
+  document.getElementById('resetBtn').disabled = false;
+  document.getElementById('statusText').textContent = 'Pressurised';
+  document.getElementById('statusText').style.color = '#ffd93d';
+
+  resizeCanvas();
+
+  const ratio = document.getElementById('ratioSelect').value;
+  const baseData = ROCKET_DATA[ratio];
+  if (!baseData) { isLaunching = false; return; }
+
+  const pressureScale = parseFloat(document.getElementById('pressureSlider').value) / 5.0;
+  const setPressure = document.getElementById('pressureValue').textContent;
+
+  launchData = {
+    t: baseData.t.slice(),
+    x: baseData.x.map(v => v * pressureScale * 1.2),
+    v: baseData.v.map(v => v * Math.sqrt(pressureScale)),
+    F: baseData.F.map(v => v * pressureScale),
+    P: baseData.P.map(v => (v - 1) * pressureScale),
+  };
+
+  const burnEndIdx = findFirstIndex(launchData.F, f => f < 0.1);
+  const safeBurnEnd = burnEndIdx > 0 ? burnEndIdx : launchData.F.length;
+  const totalTime = launchData.t[launchData.t.length - 1];
+  const maxHeight = Math.max(...launchData.x);
+  const speedVal = parseFloat(document.getElementById('speedSlider').value);
+
+  // Show set pressure
+  document.getElementById('teleSetPressure').textContent = setPressure;
+
+  // Show initial state (t=0) with a deliberate hold
+  updateTelemetry(0);
+  drawRocketFrame(0, maxHeight, 1, true);
+  document.getElementById('statusText').textContent = '3\u2026';
+
+  let simTime = 0;
+  let lastTimestamp = 0;
+  let holdFrames = 0;
+  const HOLD_TARGET = 3;
+
+  function animateFrame(timestamp) {
+    if (holdFrames < HOLD_TARGET) {
+      holdFrames++;
+      if (holdFrames === 1) document.getElementById('statusText').textContent = '2\u2026';
+      else if (holdFrames === 2) document.getElementById('statusText').textContent = '1\u2026';
+      else if (holdFrames === 3) {
+        document.getElementById('statusText').textContent = 'Launch!';
+        document.getElementById('statusText').style.color = '#6bcb77';
+      }
+      lastTimestamp = timestamp;
+      launchAnimId = requestAnimationFrame(animateFrame);
+      return;
+    }
+
+    // First real animation frame — use current timestamp as baseline
+    if (lastTimestamp < 1000) {
+      lastTimestamp = timestamp;
+      launchAnimId = requestAnimationFrame(animateFrame);
+      return;
+    }
+
+    const dt = (timestamp - lastTimestamp) / 1000;
+    lastTimestamp = timestamp;
+    simTime += dt * speedVal;
+
+    if (simTime >= totalTime) {
+      const lastIdx = launchData.x.length - 1;
+      updateTelemetry(lastIdx);
+      drawRocketFrame(0, maxHeight, 0, false);
+      document.getElementById('statusText').textContent = 'Landed!';
+      document.getElementById('teleSpeed').textContent = '0.0';
+      isLaunching = false;
+      document.getElementById('launchBtn').disabled = false;
+      return;
+    }
+
+    let idx = 0;
+    for (let i = 0; i < launchData.t.length; i++) {
+      if (launchData.t[i] <= simTime) idx = i;
+    }
+    idx = Math.min(idx, launchData.x.length - 1);
+
+    const currentH = Math.max(launchData.x[idx], 0);
+    const hasThrust = safeBurnEnd > 0 && idx < safeBurnEnd && launchData.F[idx] > 0.1;
+    let waterFrac = 0;
+    if (safeBurnEnd > 0) {
+      waterFrac = Math.max(0, 1 - idx / safeBurnEnd);
+    }
+
+    updateTelemetry(idx);
+    drawRocketFrame(currentH, maxHeight, waterFrac, hasThrust);
+
+    launchAnimId = requestAnimationFrame(animateFrame);
+  }
+
+  launchAnimId = requestAnimationFrame(animateFrame);
+}
+
+function updateTelemetry(idx) {
+  if (!launchData) return;
+  const i = Math.min(idx, launchData.x.length - 1);
+  document.getElementById('teleAlt').textContent = launchData.x[i].toFixed(1);
+  document.getElementById('teleSpeed').textContent = launchData.v[i].toFixed(1);
+  document.getElementById('telePressure').textContent = launchData.P[i].toFixed(1);
+}
+
+function resetInteractive() {
+  if (launchAnimId) cancelAnimationFrame(launchAnimId);
+  isLaunching = false;
+  launchData = null;
+  launchAnimId = null;
+  document.getElementById('teleAlt').textContent = '0.0';
+  document.getElementById('teleSpeed').textContent = '0.0';
+  document.getElementById('telePressure').textContent = '0.0';
+  document.getElementById('teleSetPressure').textContent = '—';
+  document.getElementById('launchBtn').disabled = false;
+  document.getElementById('resetBtn').disabled = true;
+  document.getElementById('statusText').textContent = 'Ready';
+  document.getElementById('statusText').style.color = '#8888aa';
+  drawRocketFrame(0, 0, 1, false);
+}
+
+// ========= INIT =========
+window.addEventListener('load', () => {
+  if (typeof Chart === 'undefined') {
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;color:#ff6b6b;">' +
+      '<h2>Chart.js failed to load</h2><p>Check your internet connection or load Chart.js locally.</p></div>';
+    return;
+  }
+  buildSummaryCards();
+  buildComparisonCharts();
+  resizeCanvas();
+  drawRocketFrame(0, 0, 1, false);
+});
+
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  if (!isLaunching) drawRocketFrame(0, 0, 1, false);
+});
+
+document.getElementById('ratioSelect').addEventListener('change', () => {
+  if (!isLaunching) {
+    resetInteractive();
+    updateTrajectoryPreview();
+  }
+});
+
+document.getElementById('pressureSlider').addEventListener('input', function() {
+  document.getElementById('pressureValue').textContent = this.value + ' bar';
+});
+
+document.getElementById('speedSlider').addEventListener('input', function() {
+  document.getElementById('speedValue').textContent = this.value + 'x';
+});
+</script>
+</body>
+</html>
