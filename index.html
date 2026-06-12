@@ -289,7 +289,8 @@ function resizeCanvas() {
   rocketCanvas.height = h * dpr;
 }
 
-function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed) {
+function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, rotation) {
+  rotation = rotation || 0;
   if (rocketCanvas.width === 0 || rocketCanvas.height === 0) return;
   const dpr = window.devicePixelRatio || 1;
   const W = rocketCanvas.width / dpr;
@@ -443,6 +444,7 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed) 
 
   rocketCtx.save();
   rocketCtx.translate(rX, rY);
+  if (rotation) rocketCtx.rotate(rotation);
 
   // Exhaust flame (behind rocket body)
   if (hasThrust) {
@@ -776,7 +778,7 @@ function launchInteractive() {
     if (simTime >= totalTime) {
       const lastIdx = launchData.x.length - 1;
       updateTelemetry(lastIdx);
-      drawRocketFrame(0, maxHeight, 0, false);
+      drawRocketFrame(0, maxHeight, 0, false, 0, 0);
       document.getElementById('statusText').textContent = 'Landed!';
       document.getElementById('teleSpeed').textContent = '0.0';
       isLaunching = false;
@@ -796,6 +798,19 @@ function launchInteractive() {
     if (safeBurnEnd > 0) {
       waterFrac = Math.max(0, 1 - idx / safeBurnEnd);
     }
+
+    // Rocket orientation: nose-up while ascending, flip at apex, nose-down falling
+    const vel = launchData.v[idx];
+    let flipFactor;
+    if (vel > 2) {
+      flipFactor = 0;
+    } else if (vel < -2) {
+      flipFactor = 1;
+    } else {
+      flipFactor = (2 - vel) / 4;
+    }
+    const wobble = flipFactor > 0.5 ? Math.sin(simTime * 3 + 1) * 0.08 * (flipFactor - 0.5) * 2 : 0;
+    const rotation = flipFactor * Math.PI + wobble;
 
     // Compute rocket nozzle screen position for particle spawning
     const dpr = window.devicePixelRatio || 1;
@@ -822,7 +837,7 @@ function launchInteractive() {
     }
 
     updateTelemetry(idx);
-    drawRocketFrame(currentH, maxHeight, waterFrac, hasThrust, launchData.v[idx]);
+    drawRocketFrame(currentH, maxHeight, waterFrac, hasThrust, launchData.v[idx], rotation);
 
     launchAnimId = requestAnimationFrame(animateFrame);
   }
