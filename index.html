@@ -422,10 +422,10 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
   }
   rocketCtx.globalAlpha = 1;
 
-  // --- Arc horizontal offset ---
-  const arcWidth = 80;
-  const arcNorm = maxHeight > 0 ? Math.min(currentHeight / maxHeight, 1) : 0;
-  const arcXOffset = Math.sin(arcNorm * Math.PI) * arcWidth;
+  // --- Arc horizontal offset (zero for vertical launch) ---
+  const arcWidth = 0;
+  const arcNorm = 0;
+  const arcXOffset = 0;
 
   // --- Trail ---
   if (trail.length > 1) {
@@ -484,6 +484,10 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
   rocketCtx.save();
   rocketCtx.translate(rX, rY);
   if (rotation) rocketCtx.rotate(rotation);
+
+  // Perspective scale — rocket gets smaller as it goes higher
+  const scale = maxHeight > 0 ? Math.max(0.35, 1 - (currentHeight / maxHeight) * 0.65) : 1;
+  rocketCtx.scale(scale, scale);
 
   // Exhaust flame (behind rocket body)
   if (hasThrust) {
@@ -866,11 +870,9 @@ function launchInteractive() {
     const nozzGrndY = cH - 50;
     const nozzPpm = maxHeight > 1 ? (nozzGrndY - cH * 0.08) / maxHeight : 1;
     const nozzleScreenY = nozzGrndY - currentH * nozzPpm + 48;
-    const arcNormHeight = maxHeight > 0 ? Math.min(currentH / maxHeight, 1) : 0;
-    const arcXOffset = Math.sin(arcNormHeight * Math.PI) * 80;
 
     // Spawn particles at the nozzle
-    spawnExhaustParticles(cW / 2 + arcXOffset, nozzleScreenY, hasThrust);
+    spawnExhaustParticles(cW / 2, nozzleScreenY, hasThrust);
     updateParticles();
 
     // Cap particles
