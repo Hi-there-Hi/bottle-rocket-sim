@@ -266,6 +266,7 @@ let launchAnimId = null;
 let launchData = null;
 let particles = [];
 let frameCount = 0;
+let trail = [];
 
 function findFirstIndex(arr, pred) {
   for (let i = 0; i < arr.length; i++) {
@@ -434,12 +435,54 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
   }
   rocketCtx.globalAlpha = 1;
 
+  // --- Arc horizontal offset ---
+  const arcWidth = 80;
+  const arcNorm = maxHeight > 0 ? Math.min(currentHeight / maxHeight, 1) : 0;
+  const arcXOffset = Math.sin(arcNorm * Math.PI) * arcWidth;
+
+  // --- Trail ---
+  if (trail.length > 1) {
+    for (let t = 1; t < trail.length; t++) {
+      const prev = trail[t - 1];
+      const curr = trail[t];
+      const prevNorm = maxHeight > 0 ? Math.min(prev.h / maxHeight, 1) : 0;
+      const currNorm = maxHeight > 0 ? Math.min(curr.h / maxHeight, 1) : 0;
+      const prevArcX = Math.sin(prevNorm * Math.PI) * arcWidth;
+      const currArcX = Math.sin(currNorm * Math.PI) * arcWidth;
+      const prevScrY = groundY - prev.h * pxPerMeter + scrollPx;
+      const currScrY = groundY - curr.h * pxPerMeter + scrollPx;
+      const alpha = Math.max(0, 0.6 - curr.age * 0.003);
+      if (alpha > 0.02 && currScrY < H + 20 && currScrY > -20) {
+        rocketCtx.strokeStyle = `rgba(255, 200, 100, ${alpha})`;
+        rocketCtx.lineWidth = 2;
+        rocketCtx.beginPath();
+        rocketCtx.moveTo(W / 2 + prevArcX, prevScrY);
+        rocketCtx.lineTo(W / 2 + currArcX, currScrY);
+        rocketCtx.stroke();
+      }
+    }
+    // Trail glow dots
+    for (let t = 0; t < trail.length; t += 3) {
+      const p = trail[t];
+      const pNorm = maxHeight > 0 ? Math.min(p.h / maxHeight, 1) : 0;
+      const pArcX = Math.sin(pNorm * Math.PI) * arcWidth;
+      const pScrY = groundY - p.h * pxPerMeter + scrollPx;
+      const alpha = Math.max(0, 0.3 - p.age * 0.005);
+      if (alpha > 0.02 && pScrY < H + 10 && pScrY > -10) {
+        rocketCtx.fillStyle = `rgba(255, 200, 100, ${alpha})`;
+        rocketCtx.beginPath();
+        rocketCtx.arc(W / 2 + pArcX, pScrY, 2, 0, Math.PI * 2);
+        rocketCtx.fill();
+      }
+    }
+  }
+
   // --- Rocket ---
   const bW = 36;
   const bH = 80;
   const noseH = 30;
   const rocketTotalH = bH + noseH;
-  const rX = W / 2;
+  const rX = W / 2 + arcXOffset;
   const rY = rocketScreenY;
 
   rocketCtx.save();
@@ -740,6 +783,9 @@ function launchInteractive() {
   // Show set pressure
   document.getElementById('teleSetPressure').textContent = setPressure;
 
+  // Clear trail from previous launch
+  trail = [];
+
   // Show initial state (t=0) with a deliberate hold
   updateTelemetry(0);
   drawRocketFrame(0, maxHeight, 1, false, 0);
@@ -799,6 +845,13 @@ function launchInteractive() {
       waterFrac = Math.max(0, 1 - idx / safeBurnEnd);
     }
 
+    // Record trail point every 3 frames
+    if (frameCount % 3 === 0) {
+      trail.push({ h: currentH, age: 0 });
+      if (trail.length > 200) trail.shift();
+    }
+    for (let t = 0; t < trail.length; t++) trail[t].age++;
+
     // Rocket orientation: nose-up while ascending, flip at apex, nose-down falling
     const vel = launchData.v[idx];
     let flipFactor;
@@ -826,9 +879,11 @@ function launchInteractive() {
     if (nozzRaw < nozzTrig) nozzScroll = nozzTrig - nozzRaw;
     nozzScroll = Math.min(nozzScroll, maxHeight * nozzPpm - nozzUsable * 0.3);
     const nozzleScreenY = nozzRaw + nozzScroll + 48;
+    const arcNormHeight = maxHeight > 0 ? Math.min(currentH / maxHeight, 1) : 0;
+    const arcXOffset = Math.sin(arcNormHeight * Math.PI) * 80;
 
     // Spawn particles at the nozzle
-    spawnExhaustParticles(cW / 2, nozzleScreenY, hasThrust);
+    spawnExhaustParticles(cW / 2 + arcXOffset, nozzleScreenY, hasThrust);
     updateParticles();
 
     // Cap particles
@@ -893,6 +948,7 @@ function resetInteractive() {
   launchData = null;
   launchAnimId = null;
   particles = [];
+  trail = [];
   document.getElementById('teleAlt').textContent = '0.0';
   document.getElementById('teleSpeed').textContent = '0.0';
   document.getElementById('telePressure').textContent = '0.0';
