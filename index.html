@@ -442,6 +442,7 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
 
   // --- Trail ---
   if (trail.length > 1) {
+    // Glow underlay
     for (let t = 1; t < trail.length; t++) {
       const prev = trail[t - 1];
       const curr = trail[t];
@@ -451,10 +452,18 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
       const currArcX = Math.sin(currNorm * Math.PI) * arcWidth;
       const prevScrY = groundY - prev.h * pxPerMeter + scrollPx;
       const currScrY = groundY - curr.h * pxPerMeter + scrollPx;
-      const alpha = Math.max(0, 0.6 - curr.age * 0.003);
-      if (alpha > 0.02 && currScrY < H + 20 && currScrY > -20) {
-        rocketCtx.strokeStyle = `rgba(255, 200, 100, ${alpha})`;
-        rocketCtx.lineWidth = 2;
+      const alpha = Math.max(0, 0.9 - curr.age * 0.003);
+      if (alpha > 0.05 && currScrY < H + 50 && currScrY > -50) {
+        // Glow
+        rocketCtx.strokeStyle = `rgba(255, 150, 50, ${alpha * 0.3})`;
+        rocketCtx.lineWidth = 8;
+        rocketCtx.beginPath();
+        rocketCtx.moveTo(W / 2 + prevArcX, prevScrY);
+        rocketCtx.lineTo(W / 2 + currArcX, currScrY);
+        rocketCtx.stroke();
+        // Core line
+        rocketCtx.strokeStyle = `rgba(255, 220, 100, ${alpha})`;
+        rocketCtx.lineWidth = 3;
         rocketCtx.beginPath();
         rocketCtx.moveTo(W / 2 + prevArcX, prevScrY);
         rocketCtx.lineTo(W / 2 + currArcX, currScrY);
@@ -462,16 +471,16 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
       }
     }
     // Trail glow dots
-    for (let t = 0; t < trail.length; t += 3) {
+    for (let t = 0; t < trail.length; t += 2) {
       const p = trail[t];
       const pNorm = maxHeight > 0 ? Math.min(p.h / maxHeight, 1) : 0;
       const pArcX = Math.sin(pNorm * Math.PI) * arcWidth;
       const pScrY = groundY - p.h * pxPerMeter + scrollPx;
-      const alpha = Math.max(0, 0.3 - p.age * 0.005);
-      if (alpha > 0.02 && pScrY < H + 10 && pScrY > -10) {
-        rocketCtx.fillStyle = `rgba(255, 200, 100, ${alpha})`;
+      const alpha = Math.max(0, 0.7 - p.age * 0.004);
+      if (alpha > 0.05 && pScrY < H + 20 && pScrY > -20) {
+        rocketCtx.fillStyle = `rgba(255, 200, 80, ${alpha})`;
         rocketCtx.beginPath();
-        rocketCtx.arc(W / 2 + pArcX, pScrY, 2, 0, Math.PI * 2);
+        rocketCtx.arc(W / 2 + pArcX, pScrY, 3, 0, Math.PI * 2);
         rocketCtx.fill();
       }
     }
@@ -845,11 +854,9 @@ function launchInteractive() {
       waterFrac = Math.max(0, 1 - idx / safeBurnEnd);
     }
 
-    // Record trail point every 3 frames
-    if (frameCount % 3 === 0) {
-      trail.push({ h: currentH, age: 0 });
-      if (trail.length > 200) trail.shift();
-    }
+    // Record trail point every frame
+    trail.push({ h: currentH, age: 0 });
+    if (trail.length > 400) trail.shift();
     for (let t = 0; t < trail.length; t++) trail[t].age++;
 
     // Rocket orientation: nose-up while ascending, flip at apex, nose-down falling
