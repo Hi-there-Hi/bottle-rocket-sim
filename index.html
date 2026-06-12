@@ -303,35 +303,28 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
   const usableH = groundY - skyY;
   const pxPerMeter = maxHeight > 1 ? usableH / maxHeight : 1;
 
-  // Camera follow: keep rocket at 35% from top when above threshold
-  const targetScreenRatio = 0.35;
+  // No camera follow — natural fixed view
   const rawRocketY = groundY - currentHeight * pxPerMeter;
-  const triggerY = skyY + usableH * targetScreenRatio;
-  let scrollPx = 0;
-  if (rawRocketY < triggerY) {
-    scrollPx = triggerY - rawRocketY;
-  }
-  scrollPx = Math.min(scrollPx, maxHeight * pxPerMeter - usableH * 0.3);
+  const scrollPx = 0;
 
-  const rocketScreenY = rawRocketY + scrollPx;
-  const groundScreenY = groundY + scrollPx;
+  const rocketScreenY = rawRocketY;
 
   rocketCtx.save();
   rocketCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // --- Sky gradient ---
-  const grad = rocketCtx.createLinearGradient(0, 0, 0, Math.min(H, groundScreenY));
+  const grad = rocketCtx.createLinearGradient(0, 0, 0, Math.min(H, groundY));
   grad.addColorStop(0, '#0a0a2a');
   grad.addColorStop(0.4, '#151540');
   grad.addColorStop(0.7, '#1a1a4e');
   grad.addColorStop(1, '#2a2a4e');
   rocketCtx.fillStyle = grad;
-  rocketCtx.fillRect(0, 0, W, Math.min(H, groundScreenY + 50));
+  rocketCtx.fillRect(0, 0, W, Math.min(H, groundY + 50));
 
   // --- Twinkling stars ---
   for (let i = 0; i < 60; i++) {
     const sx = ((i * 137.5 + 42) % 100) / 100 * W;
-    const sy = ((i * 97.3 + 42) % 100) / 100 * Math.min(H, groundScreenY) * 0.65;
+    const sy = ((i * 97.3 + 42) % 100) / 100 * Math.min(H, groundY) * 0.65;
     const twinkle = 0.3 + 0.7 * Math.abs(Math.sin(frameCount * 0.02 + i * 1.7));
     const sr = 0.5 + ((i * 53.7) % 3);
     rocketCtx.globalAlpha = (0.3 + ((i * 31.7) % 7) / 10) * twinkle;
@@ -372,7 +365,7 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
   }
 
   // --- Ground ---
-  const gvTop = groundScreenY;
+  const gvTop = groundY;
   if (gvTop < H) {
     const gGrad = rocketCtx.createLinearGradient(0, gvTop, 0, H);
     gGrad.addColorStop(0, '#1a3a1a');
@@ -406,20 +399,14 @@ function drawRocketFrame(currentHeight, maxHeight, waterFrac, hasThrust, speed, 
     rocketCtx.stroke();
 
     // --- Launch pad ---
-    if (scrollPx < 200) {
-      const padX = W / 2;
-      const padBaseY = gvTop;
-      const padAlpha = Math.max(0, 1 - scrollPx / 200);
-
-      rocketCtx.globalAlpha = padAlpha;
-      rocketCtx.fillStyle = '#555';
-      rocketCtx.fillRect(padX - 20, padBaseY, 40, 5);
-      rocketCtx.fillStyle = '#666';
-      rocketCtx.fillRect(padX - 6, padBaseY - 10, 12, 10);
-      rocketCtx.fillStyle = '#444';
-      rocketCtx.fillRect(padX - 14, padBaseY + 2, 28, 3);
-      rocketCtx.globalAlpha = 1;
-    }
+    const padX = W / 2;
+    const padBaseY = gvTop;
+    rocketCtx.fillStyle = '#555';
+    rocketCtx.fillRect(padX - 20, padBaseY, 40, 5);
+    rocketCtx.fillStyle = '#666';
+    rocketCtx.fillRect(padX - 6, padBaseY - 10, 12, 10);
+    rocketCtx.fillStyle = '#444';
+    rocketCtx.fillRect(padX - 14, padBaseY + 2, 28, 3);
   }
 
   // --- Particles (in screen space) ---
@@ -876,16 +863,9 @@ function launchInteractive() {
     const dpr = window.devicePixelRatio || 1;
     const cW = rocketCanvas.width / dpr;
     const cH = rocketCanvas.height / dpr;
-    const nozzSkyY = cH * 0.08;
     const nozzGrndY = cH - 50;
-    const nozzUsable = nozzGrndY - nozzSkyY;
-    const nozzPpm = maxHeight > 1 ? nozzUsable / maxHeight : 1;
-    const nozzRaw = nozzGrndY - currentH * nozzPpm;
-    const nozzTrig = nozzSkyY + nozzUsable * 0.35;
-    let nozzScroll = 0;
-    if (nozzRaw < nozzTrig) nozzScroll = nozzTrig - nozzRaw;
-    nozzScroll = Math.min(nozzScroll, maxHeight * nozzPpm - nozzUsable * 0.3);
-    const nozzleScreenY = nozzRaw + nozzScroll + 48;
+    const nozzPpm = maxHeight > 1 ? (nozzGrndY - cH * 0.08) / maxHeight : 1;
+    const nozzleScreenY = nozzGrndY - currentH * nozzPpm + 48;
     const arcNormHeight = maxHeight > 0 ? Math.min(currentH / maxHeight, 1) : 0;
     const arcXOffset = Math.sin(arcNormHeight * Math.PI) * 80;
 
